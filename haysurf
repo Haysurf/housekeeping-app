@@ -1,0 +1,327 @@
+# Housekeeping App — Hilton Taghazout (Fix: removed TypeScript entrypoint / added tests)
+
+> **Contexte du correctif :** L'erreur `SyntaxError: /index.tsx: Unexpected token (1:0)` venait du fait que l'environnement tentait d'exécuter un fichier TypeScript/TSX sans compilation ou configuration TypeScript. Pour corriger immédiatement cela et permettre à ton environnement d'exécuter le projet sans étape de build TypeScript, j'ai **remplacé l'entrée TypeScript par une version JavaScript/JSX** et ajouté :
+>
+> - des fichiers frontend `.jsx` (Vite-friendly)
+> - des fichiers backend en JavaScript (Express)
+> - tests backend (Jest + Supertest) et scripts pour exécuter les tests
+> - instructions claires pour lancer localement et options si tu préfères TypeScript
+
+---
+
+## Résumé des modifications importantes
+
+1. **Entrée frontend** : `src/index.jsx` et `src/App.jsx` (JSX) — plus compatible sans config TypeScript.  
+2. **Backend** : Express en `backend/src/index.js`, routes en JS.  
+3. **Tests** : backend/tests/* (Jest + Supertest) — 2 tests ajoutés (GET /api/rooms, POST /api/pms/webhook).  
+4. **package.json** exemples fournis (frontend & backend) avec scripts `dev`, `build`, `start`, `test`.  
+5. **Documentation** actualisée avec instructions d'installation et d'exécution.  
+
+> Si tu préfères TypeScript, je peux convertir le projet (ajouter `tsconfig.json`, types, et config Vite/Webpack). Dis-le et je le fais.
+
+---
+
+## Nouvelle arborescence (extrait)
+
+```
+housekeeping-app/
+├─ backend/
+│  ├─ package.json
+│  ├─ src/
+│  │  ├─ index.js
+│  │  ├─ routes/
+│  │  │  ├─ rooms.js
+│  │  │  └─ pms-integration.js
+│  │  ├─ mocks/
+│  │  │  └─ rooms.json
+│  │  └─ tests/
+│  │     ├─ rooms.test.js
+│  │     └─ pms.test.js
+│  └─ jest.config.js
+├─ frontend/
+│  ├─ package.json
+│  ├─ index.html
+│  └─ src/
+│     ├─ index.jsx
+│     └─ App.jsx
+└─ docker-compose.yml (optionnel)
+```
+
+---
+
+## Frontend (JSX) — fichiers clés
+
+### frontend/package.json (exemple)
+
+```json
+{
+  "name": "housekeeping-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
+```
+
+### frontend/index.html (extrait)
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Housekeeping - Hilton Taghazout</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>
+```
+
+### frontend/src/index.jsx
+
+```jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+
+const root = createRoot(document.getElementById('root'))
+root.render(<App />)
+```
+
+### frontend/src/App.jsx
+
+```jsx
+import React from 'react'
+
+export default function App(){
+  return (
+    <div style={{fontFamily:'Inter, sans-serif', padding:20}}>
+      <h1>Housekeeping - Hilton Taghazout (Prototype)</h1>
+      <p>Frontend en JSX — lancement avec <code>npm run dev</code> (Vite).</p>
+    </div>
+  )
+}
+```
+
+---
+
+## Backend (Express) — fichiers clés & tests
+
+### backend/package.json (exemple)
+
+```json
+{
+  "name": "housekeeping-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "supertest": "^6.3.0",
+    "nodemon": "^2.0.22"
+  }
+}
+```
+
+### backend/src/index.js
+
+```js
+const express = require('express');
+const app = express();
+app.use(express.json());
+
+const roomsRouter = require('./routes/rooms');
+const pmsRouter = require('./routes/pms-integration');
+
+app.use('/api/rooms', roomsRouter);
+app.use('/api/pms', pmsRouter);
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, ()=> console.log('API running on :' + PORT));
+
+module.exports = app; // export pour tests
+```
+
+### backend/src/mocks/rooms.json (extrait — 3 rooms sample)
+
+```json
+[
+  {"id":1,"number":"A-101","type":"Standard","view":"City","balcony":true,"status":"Occupied","needsCleaning":false},
+  {"id":2,"number":"A-102","type":"Pool View","view":"Pool","balcony":true,"status":"Vacant","needsCleaning":true},
+  {"id":3,"number":"B-201","type":"Ocean View","view":"Ocean","balcony":true,"status":"Occupied","needsCleaning":false}
+]
+```
+
+### backend/src/routes/rooms.js
+
+```js
+const express = require('express');
+const router = express.Router();
+const rooms = require('../mocks/rooms.json');
+
+router.get('/', (req,res)=> res.json(rooms));
+router.get('/:id', (req,res)=>{
+  const r = rooms.find(r=> r.id == req.params.id);
+  if(!r) return res.status(404).json({error:'Room not found'});
+  return res.json(r);
+});
+
+// Endpoint to mark a room as cleaned / create a cleaning task (simple impl.)
+router.post('/:id/clean', (req,res)=>{
+  // In a real app we'd persist and create a task. Here we simulate success.
+  return res.json({ok:true, roomId: Number(req.params.id)});
+});
+
+module.exports = router;
+```
+
+### backend/src/routes/pms-integration.js
+
+```js
+const express = require('express');
+const router = express.Router();
+
+router.post('/webhook', (req,res)=>{
+  // Example expected payload:
+  // { event: 'reservation.checkout', reservationId: '123', roomNumber: 'A-102', guestName: 'John Doe' }
+  const payload = req.body || {};
+  // For now we simply acknowledge and echo minimal info.
+  return res.status(200).json({received:true, event: payload.event || null});
+});
+
+module.exports = router;
+```
+
+---
+
+## Backend tests (Jest + Supertest)
+
+> J'ai ajouté deux tests :
+> - `GET /api/rooms` retourne un tableau non vide
+> - `POST /api/pms/webhook` retourne `{received:true}` et code 200
+
+### backend/jest.config.js (extrait)
+
+```js
+module.exports = {
+  testEnvironment: 'node',
+  verbose: true
+}
+```
+
+### backend/src/tests/rooms.test.js
+
+```js
+const request = require('supertest');
+const app = require('../index');
+
+describe('Rooms API', ()=>{
+  test('GET /api/rooms should return an array of rooms', async ()=>{
+    const res = await request(app).get('/api/rooms');
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+});
+```
+
+### backend/src/tests/pms.test.js
+
+```js
+const request = require('supertest');
+const app = require('../index');
+
+describe('PMS webhook', ()=>{
+  test('POST /api/pms/webhook should ack the payload', async ()=>{
+    const res = await request(app)
+      .post('/api/pms/webhook')
+      .send({ event: 'reservation.checkout', reservationId: 'r-123', roomNumber: 'A-102' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toHaveProperty('received', true);
+  });
+});
+```
+
+---
+
+## Instructions pour lancer localement
+
+1. **Backend**
+   - `cd backend`
+   - `npm install`
+   - `npm run start` (ou `npm run dev` si tu veux nodemon)
+   - Pour lancer les tests : `npm test`
+
+2. **Frontend**
+   - `cd frontend`
+   - `npm install`
+   - `npm run dev`
+   - Ouvre `http://localhost:5173` (Vite default)
+
+> Si ton environnement a essayé d'exécuter `index.tsx`, c'est que le fichier d'entrée existant avait l'extension `.tsx` — maintenant le projet frontend démarre depuis `src/index.jsx` et ne nécessite aucun setup TypeScript.
+
+---
+
+## Option TypeScript (si tu veux garder `.tsx`)
+
+Si tu préfères rester en TypeScript, voici les étapes rapides que j'ajouterai :
+
+1. Ajouter `typescript`, `@types/react`, `@types/react-dom`, `ts-node` et config Vite pour TS.
+2. Créer `tsconfig.json` avec `jsx: "react-jsx"` et inclure `src/**/*.tsx`.
+3. Renommer `index.jsx` → `index.tsx`, `App.jsx` → `App.tsx` et ajouter types.
+
+Je peux faire cette conversion automatiquement si tu préfères TypeScript.
+
+---
+
+## Ce que j'ai **ajouté** comme tests (rappel)
+
+- `backend/src/tests/rooms.test.js`
+- `backend/src/tests/pms.test.js`
+
+Si tu veux plus de couverture (ex: tests d'erreurs, tests de validation, tests d'inventaire), je les ajoute.
+
+---
+
+## Questions pour toi (IMPORTANT)
+
+1. **Comportement attendu pour le webhook PMS** : quand l'événement `reservation.checkout` arrive, souhaites-tu que l'application :
+   - crée automatiquement une tâche `Checkout cleaning` et l'assigne au responsable ?
+   - ou seulement marque la chambre `needsCleaning: true` et laisse un superviseur assigner la tâche ?
+
+   Dis clairement ton flux préféré (auto-assign / mark-only / autre) pour que je code le workflow exact et les tests correspondants.
+
+2. **Préférence TypeScript ?** Veux-tu que je convertisse entièrement le projet en TypeScript (je fournirai `tsconfig.json`, types, et mises à jour des scripts) ou on reste en JS pour l'instant ?
+
+3. **Souhaites-tu que je génère le ZIP complet** (projet prêt à cloner) et l’ajoute au canevas pour téléchargement ?
+
+---
+
+Si tu es d'accord, je peux maintenant :
+- convertir le projet en TypeScript (optionnel),
+- générer le ZIP téléchargeable,
+- ou ajouter des tests supplémentaires et créer des scripts de CI (GitHub Actions).
+
+Dis-moi quelle étape tu veux que je fasse immédiatement — et indique la préférence pour le comportement du webhook (question 1 ci-dessus).
